@@ -9,11 +9,5 @@
       "runtime": "python3.9",
       "maxDuration": 30
     }
-  },
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.py"
-    }
-  ]
+  }
 }
