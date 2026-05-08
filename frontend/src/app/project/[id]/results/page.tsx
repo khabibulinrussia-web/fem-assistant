@@ -81,7 +81,9 @@ export default function ResultsPage() {
         throw new Error(err || 'Ошибка расчёта');
       }
 
-      const data = await res.json();
+      const raw = await res.json();
+      // API returns {status: 'ok', data: {...}}, unwrap data
+      const data = raw.data || raw;
       setResult(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Ошибка');
