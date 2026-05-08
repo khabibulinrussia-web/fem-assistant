@@ -1,6 +1,0 @@
-{
-  "functions": {
-    "api/debug.py": { "runtime": "python3.9", "maxDuration": 10 },
-    "api/index.py": { "runtime": "python3.9", "maxDuration": 30 }
-  }
-}
