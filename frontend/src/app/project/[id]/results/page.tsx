@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getProject } from '@/lib/supabase-client';
-import type { Project } from '@/lib/supabase-client';
 
 type Tab = 'pnl' | 'cf' | 'bs' | 'ratios';
 
@@ -15,20 +14,6 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'ratios', label: 'Коэффициенты' },
 ];
 
-interface SheetRow {
-  name: string;
-  values: number[];
-}
-
-interface CalcResult {
-  pnl: { pnl: { rows: SheetRow[] } };
-  cashflow: { cashflow: { rows: SheetRow[] } };
-  balance_sheet: { balance_sheet: { rows: SheetRow[] } };
-  ratios: { ratios: string };
-  break_even: { break_even?: { rows?: SheetRow[] } };
-  assumptions?: Record<string, number>;
-}
-
 function fmt(n: number): string {
   if (n === 0) return '0';
   if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
@@ -36,31 +21,21 @@ function fmt(n: number): string {
   return n.toFixed(2);
 }
 
-function fmtPct(n: number): string {
-  return (n * 100).toFixed(1) + '%';
-}
-
-function buildRows(data: Record<string, number[]>): SheetRow[] {
-  return Object.entries(data || {}).map(([name, values]) => ({
-    name,
-    values: values || [],
-  }));
-}
-
-function sumYear(values: number[], start: number, count: number): number {
-  return values.slice(start, start + count).reduce((a, b) => a + b, 0);
-}
+const MONTH_LABELS = [
+  'Мес 1','Мес 2','Мес 3','Мес 4','Мес 5','Мес 6',
+  'Мес 7','Мес 8','Мес 9','Мес 10','Мес 11','Мес 12',
+  'Мес 13','Мес 14','Мес 15','Мес 16','Мес 17','Мес 18',
+  'Мес 19','Мес 20','Мес 21','Мес 22','Мес 23','Мес 24',
+  'Мес 25','Мес 26','Мес 27','Мес 28','Мес 29','Мес 30',
+  'Мес 31','Мес 32','Мес 33','Мес 34','Мес 35','Мес 36',
+];
 
 export default function ResultsPage() {
   const params = useParams();
   const [tab, setTab] = useState<Tab>('pnl');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<CalcResult | null>(null);
-
-  useEffect(() => {
-    calculate();
-  }, []);
+  const [result, setResult] = useState<Record<string, any> | null>(null);
 
   async function calculate() {
     try {
@@ -69,7 +44,6 @@ export default function ResultsPage() {
       const project = await getProject(params.id as string);
       const assumptions = project.assumptions || {};
 
-      // Call the API
       const res = await fetch('/api/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,73 +51,58 @@ export default function ResultsPage() {
       });
 
       if (!res.ok) {
-        const err = await res.text();
-        throw new Error(err || 'Ошибка расчёта');
+        throw new Error(`Ошибка ${res.status}: ${await res.text()}`);
       }
 
       const raw = await res.json();
-      // API returns {status: 'ok', data: {...}}, unwrap data
       const data = raw.data || raw;
       setResult(data);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка');
+      setError(e instanceof Error ? e.message : 'Ошибка расчёта');
     } finally {
       setLoading(false);
     }
   }
 
-  function renderTable(data: Record<string, number[]> | undefined, yearCount = 3) {
-    if (!data) {
-      return <p className="text-gray-500 p-6 text-center">Нет данных</p>;
-    }
+  function renderFlatTable(obj: Record<string, number[]> | undefined) {
+    if (!obj) return <p className="text-gray-500 p-6 text-center">Нет данных</p>;
 
-    const rows = buildRows(data);
-    const monthRanges = yearCount === 1
-      ? [{ label: 'Год', start: 0, count: 12 }]
-      : [
-        { label: 'Год 1', start: 0, count: 12 },
-        { label: 'Год 2', start: 12, count: 12 },
-        { label: 'Год 3', start: 24, count: 12 },
-      ];
-
-    // Add totals row
-    const totalsRow: SheetRow = {
-      name: 'Всего',
-      values: rows.length > 0
-        ? rows[0].values.map((_, i) => rows.reduce((sum, r) => sum + (r.values[i] || 0), 0))
-        : [],
-    };
+    const entries = Object.entries(obj).filter(([, vals]) => vals.length > 0);
+    if (entries.length === 0) return <p className="text-gray-500 p-6 text-center">Нет данных</p>;
 
     return (
-      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-auto max-h-[70vh]">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="text-left px-4 py-3 font-medium text-gray-700">Показатель</th>
-              {monthRanges.map((r) => (
-                <th key={r.label} className="text-right px-4 py-3 font-medium text-gray-700">{r.label}</th>
-              ))}
+          <thead className="sticky top-0 bg-gray-50 z-10">
+            <tr className="border-b border-gray-200">
+              <th className="text-left px-3 py-2 font-medium text-gray-700 whitespace-nowrap">Показатель</th>
+              {MONTH_LABELS.map((l, i) =>
+                <th key={i} className="text-right px-2 py-2 font-medium text-gray-500 text-xs whitespace-nowrap">{l}</th>
+              )}
             </tr>
           </thead>
           <tbody>
-            {rows.concat(totalsRow).map((row, ri) => {
-              const isSection = row.values.length === 0;
-              const isTotal = row.name === 'Всего';
+            {entries.map(([name, values], ri) => {
+              const pnlNames = ['revenue', 'acquiring', 'net_revenue', 'cost_of_goods', 'payroll',
+                'logistics', 'marketing', 'rent', 'other', 'total_expenses',
+                'profit_before_tax', 'tax', 'net_profit', 'cumulative_profit'];
+              const cfNames = ['operating_inflow', 'operating_outflow', 'net_operating',
+                'investing', 'financing', 'cash_start', 'cash_end', 'net_cashflow'];
+              const bsNames = ['cash', 'inventory', 'fixed_assets', 'total_assets',
+                'capital', 'accounts_payable', 'total_liabilities'];
+
+              const isSection = pnlNames.includes(name) || cfNames.includes(name) || bsNames.includes(name);
+
               return (
-                <tr key={ri} className={`border-b border-gray-100 last:border-0 ${isSection ? 'bg-gray-50' : ''} ${isTotal ? 'bg-blue-50 font-semibold' : ''}`}>
-                  <td className={`px-4 py-2 ${isSection ? 'text-xs uppercase tracking-wider text-blue-800 font-semibold' : 'text-gray-900'}`}>
-                    {row.name}
+                <tr key={ri} className={`border-b border-gray-100 last:border-0 hover:bg-gray-50 ${ri % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <td className={`px-3 py-1.5 text-xs font-medium ${isSection ? 'text-gray-900' : 'text-gray-900'} whitespace-nowrap`}>
+                    {name}
                   </td>
-                  {monthRanges.map((r) => {
-                    const val = sumYear(row.values, r.start, r.count);
-                    return (
-                      <td key={r.label} className={`px-4 py-2 text-right tabular-nums ${isSection ? 'text-gray-500' : isTotal ? 'text-blue-800' : 'text-gray-700'}`}>
-                        {row.name.toLowerCase().includes('рентабельность') || row.name.startsWith('ROE') || row.name.startsWith('ROS') || row.name.startsWith('GPM') || row.name.startsWith('OPM')
-                          ? fmtPct(val)
-                          : fmt(val)}
-                      </td>
-                    );
-                  })}
+                  {values.map((v, ci) => (
+                    <td key={ci} className={`px-2 py-1.5 text-right text-xs tabular-nums ${v < 0 ? 'text-red-500' : 'text-gray-700'}`}>
+                      {fmt(v)}
+                    </td>
+                  ))}
                 </tr>
               );
             })}
@@ -153,78 +112,111 @@ export default function ResultsPage() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button onClick={calculate} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Повторить</button>
-        </div>
-      </div>
-    );
-  }
-
-  const pnlData = result?.pnl?.pnl?.rows ? Object.fromEntries(
-    (result.pnl.pnl.rows || []).map((r: SheetRow) => [r.name, r.values])
-  ) : undefined;
-
-  const cfData = result?.cashflow?.cashflow?.rows ? Object.fromEntries(
-    (result.cashflow.cashflow.rows || []).map((r: SheetRow) => [r.name, r.values])
-  ) : undefined;
-
-  const bsData = result?.balance_sheet?.balance_sheet?.rows ? Object.fromEntries(
-    (result.balance_sheet.balance_sheet.rows || []).map((r: SheetRow) => [r.name, r.values])
-  ) : undefined;
+  const displayData: Record<Tab, Record<string, number[]> | undefined> = {
+    pnl: result?.pnl as Record<string, number[]> || undefined,
+    cf: result?.cashflow as Record<string, number[]> || undefined,
+    bs: result?.balance_sheet as Record<string, number[]> || undefined,
+    ratios: undefined,
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-gray-600">←</Link>
-            <h1 className="text-lg font-semibold text-gray-900">Результаты</h1>
+            <Link href={`/project/${params.id}/assumptions`} className="text-gray-400 hover:text-gray-600 text-lg">←</Link>
+            <h1 className="text-lg font-semibold text-gray-900">Результаты расчёта</h1>
           </div>
-          <div className="flex gap-2">
-            <Link href={`/project/${params.id}/assumptions`} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
-              Редактировать данные
-            </Link>
-            <button onClick={() => {}} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-              📥 Excel
-            </button>
-          </div>
+          <button
+            onClick={calculate}
+            disabled={loading}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Считаю...' : '⟳ Пересчитать'}
+          </button>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex gap-1 bg-white rounded-lg border border-gray-200 p-1 mb-6 overflow-x-auto">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm rounded-md whitespace-nowrap transition ${
-                tab === t.key ? 'bg-blue-600 text-white font-medium' : 'text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {t.label}
+        {!result && !loading && !error && (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <p className="text-gray-500 mb-4">Нажми «Пересчитать» чтобы получить расчёт</p>
+            <button onClick={calculate} className="px-6 py-3 bg-blue-600 text-white rounded-lg">
+              ⟳ Пересчитать
             </button>
-          ))}
-        </div>
-
-        {tab === 'pnl' && renderTable(pnlData)}
-        {tab === 'cf' && renderTable(cfData)}
-        {tab === 'bs' && renderTable(bsData)}
-        {tab === 'ratios' && (
-          <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap">{typeof result?.ratios === 'string' ? result.ratios : (result?.ratios as any)?.ratios || ''}</pre>
           </div>
+        )}
+
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center mb-6">
+            <p className="text-red-600 mb-3">{error}</p>
+            <button onClick={calculate} className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm">
+              Повторить
+            </button>
+          </div>
+        )}
+
+        {loading && (
+          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+            <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-3" />
+            <p className="text-gray-500">Расчёт...</p>
+          </div>
+        )}
+
+        {result && !loading && (
+          <>
+            <div className="flex gap-1 bg-white rounded-lg border border-gray-200 p-1 mb-6 overflow-x-auto">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={`px-4 py-2 text-sm rounded-md whitespace-nowrap transition ${
+                    tab === t.key
+                      ? 'bg-blue-600 text-white font-medium'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {tab === 'ratios' ? (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-sm font-semibold text-gray-700 mb-4">Ключевые коэффициенты</h2>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {result.ratios && Object.entries(result.ratios).map(([k, v]) => (
+                    <div key={k} className="border border-gray-100 rounded-lg p-4 text-center">
+                      <div className="text-xs text-gray-500 mb-1">{k}</div>
+                      <div className="text-lg font-bold text-gray-900">{typeof v === 'number' ? (v * 100).toFixed(1) + '%' : String(v)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              renderFlatTable(displayData[tab])
+            )}
+
+            {result.break_even && (
+              <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <h3 className="text-sm font-semibold text-blue-800 mb-2">Точка безубыточности</h3>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-blue-600">Постоянные расходы:</span>
+                    <span className="font-bold ml-1">{(result.break_even.monthly_fixed || 0).toLocaleString()} ₽</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Заказов в месяц:</span>
+                    <span className="font-bold ml-1">{Math.ceil(result.break_even.break_even_orders || 0)}</span>
+                  </div>
+                  <div>
+                    <span className="text-blue-600">Выручка:</span>
+                    <span className="font-bold ml-1">{Math.ceil(result.break_even.break_even_revenue || 0).toLocaleString()} ₽</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>
