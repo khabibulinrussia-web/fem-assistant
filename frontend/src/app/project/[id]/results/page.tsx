@@ -5,6 +5,92 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { getProject } from '@/lib/supabase-client';
 
+// Map frontend assumption keys (camelCase) to API keys (snake_case)
+const ASSUMPTION_MAP: Record<string, string> = {
+  targetRevenue: 'target_revenue_per_day',
+  avgOrderValue: 'avg_check',
+  ordersPerDay: 'orders_per_day',
+  growthRate: undefined as any, // unused in engine
+  cogsPercent: 'cost_per_orders', // will be computed
+  payroll: 'payroll',
+  rent: 'rent',
+  marketing: 'marketing',
+  acquiringPercent: 'acquiring_pct',
+  logisticsPerOrder: 'logistics_per_order',
+  taxSystem: 'tax_system',
+  taxRate: 'tax_rate',
+  regIP: 'reg_ip',
+  equipment: 'equipment',
+  website: 'website',
+  reserveFund: 'reserve_fund',
+  rampMonth1: 'ramp_month_1',
+  rampMonth2: 'ramp_month_2',
+  rampMonth3: 'ramp_month_3',
+};
+
+function mapAssumptions(raw: Record<string, unknown>): Record<string, unknown> {
+  const mapped: Record<string, unknown> = {};
+
+  // Required API fields with defaults
+  mapped['target_revenue_per_day'] = 320;
+  mapped['avg_check'] = 700;
+  mapped['orders_per_day'] = 15;
+  mapped['cost_per_order'] = 0;
+  mapped['acquiring_pct'] = 1.5;
+  mapped['payroll'] = 9000;
+  mapped['marketing'] = 0;
+  mapped['rent'] = 0;
+  mapped['other_expenses'] = 0;
+  mapped['logistics_per_order'] = 0;
+  mapped['tax_system'] = 'USN_15';
+  mapped['tax_rate'] = 0.15;
+  mapped['reg_ip'] = 5000;
+  mapped['equipment'] = 50000;
+  mapped['website'] = 0;
+  mapped['reserve_fund'] = 0;
+  mapped['ramp_month_1'] = 0.85;
+  mapped['ramp_month_2'] = 0.90;
+  mapped['ramp_month_3'] = 1.0;
+  mapped['inventory_days'] = 0;
+  mapped['supplier_deferral'] = 0;
+  mapped['customer_deferral'] = 0;
+
+  if (!raw) return mapped;
+
+  // Map known camelCase keys
+  for (const [camel, snake] of Object.entries(ASSUMPTION_MAP)) {
+    if (!snake) continue;
+    if (raw[camel] !== undefined) {
+      if (camel === 'taxSystem') {
+        // Convert 'УСН 15%' → 'USN_15'
+        const v = String(raw[camel]);
+        if (v.includes('6')) mapped[snake] = 'USN_6';
+        else if (v.includes('15')) mapped[snake] = 'USN_15';
+        else mapped[snake] = 'OSNO';
+      } else if (camel === 'taxRate') {
+        // Convert percent to decimal
+        mapped[snake] = Number(raw[camel]) / 100;
+      } else if (camel === 'acquiringPercent') {
+        mapped[snake] = Number(raw[camel]);
+      } else if (camel === 'targetRevenue') {
+        // User enters monthly target, API needs daily
+        mapped[snake] = Number(raw[camel]) / 30;
+      } else if (camel === 'cogsPercent') {
+        // Convert COGS% to cost_per_order if we have avg check
+        const avgCheck = mapped['avg_check'] as number;
+        const pct = Number(raw[camel]) / 100;
+        mapped['cost_per_order'] = Math.round(avgCheck * pct);
+      } else if (camel === 'growthRate') {
+        // growthRate not used in v6 engine, skip
+      } else {
+        mapped[snake] = Number(raw[camel]);
+      }
+    }
+  }
+
+  return mapped;
+}
+
 type Tab = 'pnl' | 'cf' | 'bs' | 'ratios';
 
 const tabs: { key: Tab; label: string }[] = [
@@ -42,12 +128,13 @@ export default function ResultsPage() {
       setLoading(true);
       setError(null);
       const project = await getProject(params.id as string);
-      const assumptions = project.assumptions || {};
+      const rawAssumptions = project.assumptions || {};
+      const mappedAssumptions = mapAssumptions(rawAssumptions as Record<string, unknown>);
 
       const res = await fetch('/api/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assumptions }),
+        body: JSON.stringify({ assumptions: mappedAssumptions }),
       });
 
       if (!res.ok) {
