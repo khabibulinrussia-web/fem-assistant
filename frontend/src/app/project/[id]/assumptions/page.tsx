@@ -1,15 +1,24 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { getProject, updateProjectAssumptions } from '@/lib/supabase-client';
+
+interface AssumptionField {
+  key: string;
+  label: string;
+  type: 'number' | 'percent' | 'text';
+  value: number | string;
+  hint?: string;
+}
 
 interface AssumptionGroup {
   title: string;
-  fields: { key: string; label: string; type: 'number' | 'percent' | 'text'; value: number | string; hint?: string }[];
+  fields: AssumptionField[];
 }
 
-const EMPTY_ASSUMPTIONS: AssumptionGroup[] = [
+const EMPTY_GROUPS: AssumptionGroup[] = [
   {
     title: '📈 Продажи',
     fields: [
@@ -41,7 +50,6 @@ const EMPTY_ASSUMPTIONS: AssumptionGroup[] = [
     fields: [
       { key: 'investmentReg', label: 'Регистрация ИП', type: 'number', value: 5_000 },
       { key: 'investmentReserve', label: 'Резервный фонд', type: 'number', value: 50_000 },
-      { key: 'investmentTotal', label: 'Всего инвестиций', type: 'number', value: 55_000, hint: 'Рассчитывается автоматически' },
     ],
   },
   {
@@ -66,39 +74,74 @@ const EMPTY_ASSUMPTIONS: AssumptionGroup[] = [
 export default function AssumptionsPage() {
   const params = useParams();
   const router = useRouter();
-  const [groups, setGroups] = useState<AssumptionGroup[]>(EMPTY_ASSUMPTIONS);
+  const [groups, setGroups] = useState<AssumptionGroup[]>(EMPTY_GROUPS);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const updateField = (groupIdx: number, fieldIdx: number, value: string) => {
-    const newGroups = structuredClone(groups);
-    const field = newGroups[groupIdx].fields[fieldIdx];
-    if (field.type === 'number') field.value = Number(value) || 0;
-    else if (field.type === 'percent') field.value = Number(value) || 0;
-    else field.value = value;
-    setGroups(newGroups);
+  useEffect(() => {
+    loadProject();
+  }, []);
+
+  async function loadProject() {
+    try {
+      const project = await getProject(params.id as string);
+      const saved = project.assumptions || {};
+      const newGroups = structuredClone(EMPTY_GROUPS);
+      for (const group of newGroups) {
+        for (const field of group.fields) {
+          if (saved[field.key] !== undefined) {
+            field.value = saved[field.key] as number | string;
+          }
+        }
+      }
+      setGroups(newGroups);
+    } catch (e) {
+      console.error('Failed to load project', e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const updateField = (gi: number, fi: number, val: string) => {
+    const next = structuredClone(groups);
+    const f = next[gi].fields[fi];
+    if (f.type === 'text') f.value = val;
+    else f.value = Number(val) || 0;
+    setGroups(next);
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-400 hover:text-gray-600 transition">←</Link>
+            <Link href="/" className="text-gray-400 hover:text-gray-600">←</Link>
             <h1 className="text-lg font-semibold text-gray-900">Входящие данные</h1>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={() => router.push('/')}
-              className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
+            <button onClick={() => router.push('/')} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
               Отмена
             </button>
             <button
               onClick={async () => {
                 setSaving(true);
-                await new Promise(r => setTimeout(r, 500));
-                setSaving(false);
-                router.push(`/project/${params.id}/results`);
+                try {
+                  const data: Record<string, unknown> = {};
+                  for (const g of groups) for (const f of g.fields) data[f.key] = f.value;
+                  await updateProjectAssumptions(params.id as string, data);
+                  router.push(`/project/${params.id}/results`);
+                } catch (e) {
+                  console.error('Save failed', e);
+                  setSaving(false);
+                }
               }}
               className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               disabled={saving}
@@ -124,16 +167,16 @@ export default function AssumptionsPage() {
                     <input
                       type="text"
                       value={field.value as string}
-                      onChange={(e) => updateField(gi, fi, e.target.value)}
-                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      onChange={e => updateField(gi, fi, e.target.value)}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   ) : (
                     <div className="relative">
                       <input
                         type="number"
                         value={field.value}
-                        onChange={(e) => updateField(gi, fi, e.target.value)}
-                        className="w-full px-3 py-1.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onChange={e => updateField(gi, fi, e.target.value)}
+                        className="w-full px-3 py-1.5 pr-10 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
                         {field.type === 'percent' ? '%' : '₽'}
