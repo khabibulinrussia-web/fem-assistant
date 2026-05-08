@@ -97,6 +97,9 @@ export default function ResultsPage() {
       const rawAssumptions = project.assumptions || {};
       const mappedAssumptions = mapAssumptions(rawAssumptions as Record<string, unknown>);
 
+      console.log('📤 RAW from Supabase:', JSON.stringify(rawAssumptions, null, 2));
+      console.log('📤 MAPPED for API:', JSON.stringify(mappedAssumptions, null, 2));
+
       const res = await fetch('/api/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
