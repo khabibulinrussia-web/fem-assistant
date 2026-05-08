@@ -15,17 +15,20 @@ function mapAssumptions(raw: Record<string, unknown>): Record<string, unknown> {
   // Helper: get number or default
   const n = (k: string, def = 0) => raw[k] !== undefined ? Number(raw[k]) : def;
 
-  // Extract values
+  // Extract values - keys MUST match the Assumptions form (page.tsx)
   const monthlyRevenue = n('targetRevenue', 0);
   const avgCheck = n('avgOrderValue', 0);
   const ordersPerDay = n('ordersPerDay', 0);
   const cogsPct = n('cogsPercent', 0);
-  const taxRate = n('taxRate', 15);
+  const taxRatePct = n('taxRate', 15);
   const acquiringPct = n('acquiringPercent', 1.5);
+  const ramp1 = n('rampUp1', 85) / 100;   // form key: rampUp1, percent
+  const ramp2 = n('rampUp2', 90) / 100;   // form key: rampUp2
+  const ramp3 = n('rampUp3', 100) / 100;   // form key: rampUp3
 
   // Convert to API format
   // target_revenue_per_day = monthly / 30
-  r['target_revenue_per_day'] = Math.round(monthlyRevenue / 30);
+  r['target_revenue_per_day'] = monthlyRevenue > 0 ? Math.round(monthlyRevenue / 30) : 0;
   r['avg_check'] = avgCheck;
   r['orders_per_day'] = ordersPerDay;
   // cost_per_order = avg_check * cogs% / 100
@@ -34,25 +37,28 @@ function mapAssumptions(raw: Record<string, unknown>): Record<string, unknown> {
   r['payroll'] = n('payroll', 0);
   r['marketing'] = n('marketing', 0);
   r['rent'] = n('rent', 0);
-  r['other_expenses'] = n('otherExpenses', 0);
-  r['logistics_per_order'] = n('logisticsPerOrder', 0);
-  r['reg_ip'] = n('regIP', 0);
-  r['equipment'] = n('equipment', 0);
-  r['website'] = n('website', 0);
-  r['reserve_fund'] = n('reserveFund', 0);
-  r['ramp_month_1'] = n('rampMonth1', 1);
-  r['ramp_month_2'] = n('rampMonth2', 1);
-  r['ramp_month_3'] = n('rampMonth3', 1);
-  r['inventory_days'] = n('inventoryDays', 0);
-  r['supplier_deferral'] = n('supplierDeferral', 0);
-  r['customer_deferral'] = n('customerDeferral', 0);
+  r['other_expenses'] = 0;
+  r['logistics_per_order'] = 0;
+  // Investments - form keys: investmentReg, equipment is 0 (not in form), investmentReserve
+  r['reg_ip'] = n('investmentReg', 0);
+  r['equipment'] = 50000;  // from original Excel, not in form
+  r['website'] = 0;
+  r['reserve_fund'] = n('investmentReserve', 0);
+  // Ramp-up - form keys: rampUp1, rampUp2, rampUp3 (percent)
+  r['ramp_month_1'] = ramp1;
+  r['ramp_month_2'] = ramp2;
+  r['ramp_month_3'] = ramp3;
+  // Turnover - form keys: inventoryTurnover, payablesTurnover, receivablesTurnover
+  r['inventory_days'] = n('inventoryTurnover', 0);
+  r['supplier_deferral'] = n('payablesTurnover', 0);
+  r['customer_deferral'] = n('receivablesTurnover', 0);
 
   // Tax
   const ts = String(raw['taxSystem'] || '');
   if (ts.includes('6')) r['tax_system'] = 'USN_6';
   else if (ts.includes('15')) r['tax_system'] = 'USN_15';
   else r['tax_system'] = 'OSNO';
-  r['tax_rate'] = taxRate / 100;
+  r['tax_rate'] = taxRatePct / 100;
 
   return r;
 }
