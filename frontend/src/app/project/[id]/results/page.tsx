@@ -6,89 +6,55 @@ import Link from 'next/link';
 import { getProject } from '@/lib/supabase-client';
 
 // Map frontend assumption keys (camelCase) to API keys (snake_case)
-const ASSUMPTION_MAP: Record<string, string> = {
-  targetRevenue: 'target_revenue_per_day',
-  avgOrderValue: 'avg_check',
-  ordersPerDay: 'orders_per_day',
-  growthRate: undefined as any, // unused in engine
-  cogsPercent: 'cost_per_orders', // will be computed
-  payroll: 'payroll',
-  rent: 'rent',
-  marketing: 'marketing',
-  acquiringPercent: 'acquiring_pct',
-  logisticsPerOrder: 'logistics_per_order',
-  taxSystem: 'tax_system',
-  taxRate: 'tax_rate',
-  regIP: 'reg_ip',
-  equipment: 'equipment',
-  website: 'website',
-  reserveFund: 'reserve_fund',
-  rampMonth1: 'ramp_month_1',
-  rampMonth2: 'ramp_month_2',
-  rampMonth3: 'ramp_month_3',
-};
-
+// User enters: targetRevenue (monthly), avgOrderValue, cogsPercent
+// API expects: target_revenue_per_day (daily), avg_check, cost_per_order
 function mapAssumptions(raw: Record<string, unknown>): Record<string, unknown> {
-  const mapped: Record<string, unknown> = {};
+  const r: Record<string, unknown> = {};
+  if (!raw) return r;
 
-  // Required API fields with defaults
-  mapped['target_revenue_per_day'] = 320;
-  mapped['avg_check'] = 700;
-  mapped['orders_per_day'] = 15;
-  mapped['cost_per_order'] = 0;
-  mapped['acquiring_pct'] = 1.5;
-  mapped['payroll'] = 9000;
-  mapped['marketing'] = 0;
-  mapped['rent'] = 0;
-  mapped['other_expenses'] = 0;
-  mapped['logistics_per_order'] = 0;
-  mapped['tax_system'] = 'USN_15';
-  mapped['tax_rate'] = 0.15;
-  mapped['reg_ip'] = 5000;
-  mapped['equipment'] = 50000;
-  mapped['website'] = 0;
-  mapped['reserve_fund'] = 0;
-  mapped['ramp_month_1'] = 0.85;
-  mapped['ramp_month_2'] = 0.90;
-  mapped['ramp_month_3'] = 1.0;
-  mapped['inventory_days'] = 0;
-  mapped['supplier_deferral'] = 0;
-  mapped['customer_deferral'] = 0;
+  // Helper: get number or default
+  const n = (k: string, def = 0) => raw[k] !== undefined ? Number(raw[k]) : def;
 
-  if (!raw) return mapped;
+  // Extract values
+  const monthlyRevenue = n('targetRevenue', 0);
+  const avgCheck = n('avgOrderValue', 0);
+  const ordersPerDay = n('ordersPerDay', 0);
+  const cogsPct = n('cogsPercent', 0);
+  const taxRate = n('taxRate', 15);
+  const acquiringPct = n('acquiringPercent', 1.5);
 
-  // Map known camelCase keys
-  for (const [camel, snake] of Object.entries(ASSUMPTION_MAP)) {
-    if (!snake) continue;
-    if (raw[camel] !== undefined) {
-      if (camel === 'taxSystem') {
-        // Convert 'УСН 15%' → 'USN_15'
-        const v = String(raw[camel]);
-        if (v.includes('6')) mapped[snake] = 'USN_6';
-        else if (v.includes('15')) mapped[snake] = 'USN_15';
-        else mapped[snake] = 'OSNO';
-      } else if (camel === 'taxRate') {
-        // Convert percent to decimal
-        mapped[snake] = Number(raw[camel]) / 100;
-      } else if (camel === 'acquiringPercent') {
-        mapped[snake] = Number(raw[camel]);
-      } else if (camel === 'targetRevenue') {
-        // User enters monthly target, API needs daily
-        mapped[snake] = Number(raw[camel]) / 30;
-      } else if (camel === 'cogsPercent') {
-        // Convert COGS% to cost_per_order if we have avg check
-        const avgCheck = mapped['avg_check'] as number;
-        const pct = Number(raw[camel]) / 100;
-        mapped['cost_per_order'] = Math.round(avgCheck * pct);
-      } else if (camel === 'growthRate') {
-        // growthRate not used in v6 engine, skip
-      } else {
-        mapped[snake] = Number(raw[camel]);
-      }
-    }
-  }
+  // Convert to API format
+  // target_revenue_per_day = monthly / 30
+  r['target_revenue_per_day'] = Math.round(monthlyRevenue / 30);
+  r['avg_check'] = avgCheck;
+  r['orders_per_day'] = ordersPerDay;
+  // cost_per_order = avg_check * cogs% / 100
+  r['cost_per_order'] = avgCheck > 0 ? Math.round(avgCheck * cogsPct / 100) : 0;
+  r['acquiring_pct'] = acquiringPct;
+  r['payroll'] = n('payroll', 0);
+  r['marketing'] = n('marketing', 0);
+  r['rent'] = n('rent', 0);
+  r['other_expenses'] = n('otherExpenses', 0);
+  r['logistics_per_order'] = n('logisticsPerOrder', 0);
+  r['reg_ip'] = n('regIP', 0);
+  r['equipment'] = n('equipment', 0);
+  r['website'] = n('website', 0);
+  r['reserve_fund'] = n('reserveFund', 0);
+  r['ramp_month_1'] = n('rampMonth1', 1);
+  r['ramp_month_2'] = n('rampMonth2', 1);
+  r['ramp_month_3'] = n('rampMonth3', 1);
+  r['inventory_days'] = n('inventoryDays', 0);
+  r['supplier_deferral'] = n('supplierDeferral', 0);
+  r['customer_deferral'] = n('customerDeferral', 0);
 
-  return mapped;
+  // Tax
+  const ts = String(raw['taxSystem'] || '');
+  if (ts.includes('6')) r['tax_system'] = 'USN_6';
+  else if (ts.includes('15')) r['tax_system'] = 'USN_15';
+  else r['tax_system'] = 'OSNO';
+  r['tax_rate'] = taxRate / 100;
+
+  return r;
 }
 
 type Tab = 'pnl' | 'cf' | 'bs' | 'ratios';
