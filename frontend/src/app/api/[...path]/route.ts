@@ -1,5 +1,4 @@
 // Прокси для API расчётов на serveo tunnel
-// Edge Runtime — работает в Vercel без Node.js сервера
 export const runtime = 'edge';
 
 export async function GET(req: Request) {
@@ -13,13 +12,13 @@ export async function GET(req: Request) {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
-
-    return new Response(resp.body, {
+    const text = await resp.text();
+    return new Response(text, {
       status: resp.status,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    return new Response(JSON.stringify({ error: 'API error', detail: String(err) }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -39,13 +38,13 @@ export async function POST(req: Request) {
       headers: { 'Content-Type': 'application/json' },
       body: bodyText,
     });
-
-    return new Response(resp.body, {
+    const text = await resp.text();
+    return new Response(text, {
       status: resp.status,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), {
+    return new Response(JSON.stringify({ error: 'API error', detail: String(err) }), {
       status: 502,
       headers: { 'Content-Type': 'application/json' },
     });
