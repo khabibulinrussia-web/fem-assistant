@@ -1,15 +1,14 @@
 // Прокси для API расчётов на serveo tunnel
 export const runtime = 'edge';
 
+const SERVEO_URL = 'https://b03ce76a4ca218ae-193-84-3-248.serveousercontent.com';
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const path = url.pathname.replace(/^\/api\//, '');
-    const serveoUrl = 'https://f964129a02b98bdb-193-84-3-248.serveousercontent.com';
-    const targetUrl = `${serveoUrl}/api/${path}${url.search}`;
-
-    const resp = await fetch(targetUrl, {
-      method: 'GET',
+    const path = url.pathname.replace('/api/', '');
+    const target = SERVEO_URL + '/api/' + path + url.search;
+    const resp = await fetch(target, {
       headers: { 'Content-Type': 'application/json' },
     });
     const text = await resp.text();
@@ -28,12 +27,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const url = new URL(req.url);
-    const path = url.pathname.replace(/^\/api\//, '');
-    const serveoUrl = 'https://f964129a02b98bdb-193-84-3-248.serveousercontent.com';
-    const targetUrl = `${serveoUrl}/api/${path}${url.search}`;
+    const path = url.pathname.replace('/api/', '');
+    const target = SERVEO_URL + '/api/' + path + url.search;
     const bodyText = await req.text();
-
-    const resp = await fetch(targetUrl, {
+    const resp = await fetch(target, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: bodyText,
