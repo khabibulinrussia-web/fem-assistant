@@ -1,0 +1,6 @@
+// Supabase configuration
+export const supabaseConfig = {
+  url: 'https://bbemvroquxdpsznvtznu.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZW12cm9xdXhkcHN6bnZ0em51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxOTc5MjAsImV4cCI6MjA5Mzc3MzkyMH0.zakLuavDuEJJR943bc7MbWKoY3BJ5PCgwv1_-CetK9A',
+  serviceKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJiZW12cm9xdXhkcHN6bnZ0em51Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODE5NzkyMCwiZXhwIjoyMDkzNzczOTIwfQ.oCLw7sSn3x9aJbKsfiOdUdo2BZiW6r9Cmi_3d7dBJM8',
+};

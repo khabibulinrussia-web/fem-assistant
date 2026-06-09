@@ -1,0 +1,23 @@
+{
+  "name": "ФЭМ-ассистент",
+  "short_name": "ФЭМ",
+  "description": "Финансово-экономическое моделирование",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1e40af",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192x192-bg.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512-bg.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
