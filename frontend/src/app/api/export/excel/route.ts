@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { generateExcel } from '@/lib/excel-export';
 
 export const runtime = 'nodejs';
@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const a = body.assumptions || body;
     const buf = await generateExcel(a);
-    return new NextResponse(buf, {
+    return new Response(buf as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -17,6 +17,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: any) {
     console.error('Excel export error:', err);
-    return NextResponse.json({ status: 'error', detail: err.message || 'Unknown error' }, { status: 500 });
+    return new Response(JSON.stringify({ status: 'error', detail: err.message || 'Unknown error' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
