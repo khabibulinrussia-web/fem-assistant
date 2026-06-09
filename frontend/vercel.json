@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "api/**/*.py": {
+      "runtime": "@vercel/python@4.1.1"
+    }
+  },
+  "buildCommand": "npm run build",
+  "installCommand": "npm install --legacy-peer-deps",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
+  "routes": [
+    { "src": "/api/(.*)", "dest": "api/index" }
+  ]
+}
