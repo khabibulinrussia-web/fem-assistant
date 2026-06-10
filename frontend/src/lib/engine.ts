@@ -144,6 +144,76 @@ export function runCalculation(a: Record<string, any>): Record<string, any> {
     }
   }
 
+  // === Custom blocks (личный блок) ===
+  const customBlocks: any[] = a.customBlocks || [];
+  if (Array.isArray(customBlocks)) {
+    for (const cb of customBlocks) {
+      if (!cb || typeof cb !== 'object') continue;
+      const val = parseFloat(cb.value || '0') || 0;
+      if (val === 0) continue;
+      const valueType: string = cb.valueType || 'rub';
+      const period: string = cb.period || 'month';
+      const attachTo: string = cb.attachTo || 'income';
+      const productId: string = cb.productId || '';
+
+      // Convert to monthly value
+      let monthlyVal = val;
+      if (period === 'day') monthlyVal = val * 30;
+      else if (period === 'year') monthlyVal = val / 12;
+
+      // Find target product if specified
+      let targetProd: any = null;
+      if (attachTo === 'expenses' && productId && Array.isArray(products)) {
+        targetProd = products.find((p: any) => p.id === productId) || null;
+      }
+
+      if (attachTo === 'income') {
+        // Добавляем к выручке
+        for (let m = 0; m < MONTHS; m++) {
+          if (valueType === 'pct') {
+            // Процент от текущей выручки
+            const baseRevenue = products.length > 0 ? revenue[m] : revenue[m];
+            revenue[m] += Math.round(baseRevenue * monthlyVal / 100 * 100) / 100;
+          } else {
+            // Фиксированная сумма
+            let addVal = monthlyVal;
+            if (targetProd) {
+              // Если привязан к продукту — доля от его выручки
+              const prodRev = rampedRevenue(targetProd, m);
+              if (prodRev > 0 && revenue[m] > 0) {
+                addVal = monthlyVal * (prodRev / revenue[m]);
+              }
+            }
+            revenue[m] += Math.round(addVal * 100) / 100;
+          }
+        }
+      } else if (attachTo === 'expenses') {
+        if (targetProd) {
+          // Влияет на себестоимость продукта
+          for (let m = 0; m < MONTHS; m++) {
+            const qty = rampedQty(targetProd, m);
+            if (qty > 0) {
+              const perUnit = monthlyVal / Math.max(1, qty);
+              purchase[m] += Math.round(perUnit * qty * 100) / 100;
+            } else {
+              purchase[m] += Math.round(monthlyVal * 100) / 100;
+            }
+          }
+        } else {
+          // Без привязки к продукту — в переменные расходы
+          for (let m = 0; m < MONTHS; m++) {
+            if (valueType === 'pct') {
+              // Процент от общей выручки
+              variableExtra[m] += Math.round(revenue[m] * monthlyVal / 100 * 100) / 100;
+            } else {
+              variableExtra[m] += Math.round(monthlyVal * 100) / 100;
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Net revenue (after discounts)
   const netRevenue: number[] = products.length > 0
     ? revenue.map((r, m) => Math.round((r - discountsTotal[m]) * 100) / 100)
@@ -542,6 +612,24 @@ export function runFromGraph(graph: Record<string, any>): Record<string, any> {
   if (apDays > 0) a.supplier_deferral = apDays;
   if (invDays > 0) a.inventory_days = invDays;
   if (creditData.amount > 0) a.credit = creditData;
+  // Custom blocks from graph
+  const customBlocks: any[] = [];
+  for (const block of blocks) {
+    if (!block || block.type !== 'custom') continue;
+    const props = block.props || {};
+    const val = parseFloat(props.value || '0') || 0;
+    if (val <= 0) continue;
+    customBlocks.push({
+      name: block.name || props.name || 'Личный блок',
+      value: val,
+      valueType: props.valueType || 'rub',
+      period: props.period || 'month',
+      attachTo: props.attachTo || 'income',
+      productId: null,
+    });
+  }
+  if (customBlocks.length > 0) a.customBlocks = customBlocks;
+
   a.ip_fixed_contrib = ipFixedContrib;
   a.ip_extra_contrib = ipExtraContrib;
   a.start_orders = 0;
